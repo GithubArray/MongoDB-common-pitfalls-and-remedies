@@ -1,4 +1,6 @@
 Below is a compiled list of common pitfalls I saw over the years on stackoverflow. I am going to propose common remedies to them also.
+
+
 ---------------------------------------------
 ### Storing dates as non-date objects
 #### What is the Symptom?  
@@ -253,16 +255,220 @@ db.collection.aggregate([
 
 ---------------------------------------------
 ### Storing at wrong query level
-TODO
+#### What is the Symptom?  
+Contrary to your frequent query pattern, you are storing your information in different level. For example in a customer data analytics system, your major query is concerned around customers transactions, like monthly statistics aggregation. However, your transaction data is stored as array entries in a customer document.
+
+#### Why this is bad?  
+1. You suffer from query complexity. Even if you can use complicated aggregation to wrangle the data, it introduces code smell and tech debt.
+2. You are unlikely to take advantage from index.
+3. When data grow, 16MB MongoDB single document size could be breached.
+
+#### What would be suggested way(s) to avoid this?  
+You should denormalize your data as an single document.  
+Following our scenario of monthly transactions data aggregation, the `customer` collection may look like this:
+```
+db={
+  "customer": [
+    {
+      "_id": 1,
+      "name": "Alice",
+      "transactions": [
+        {
+          _id: "tx1",
+          date: ISODate("2024-01-01"),
+          amount: 100
+        },
+        {
+          _id: "tx2",
+          date: ISODate("2024-01-02"),
+          amount: 200
+        },
+        {
+          _id: "tx3",
+          date: ISODate("2024-02-01"),
+          amount: 300
+        },
+        {
+          _id: "tx4",
+          date: ISODate("2024-03-01"),
+          amount: 400
+        }
+      ]
+    },
+    {
+      "_id": 2,
+      "name": "Bob",
+      "transactions": [
+        {
+          _id: "tx5",
+          date: ISODate("2024-02-02"),
+          amount: 1000
+        },
+        {
+          _id: "tx6",
+          date: ISODate("2024-03-03"),
+          amount: 1000
+        }
+      ]
+    }
+  ]
+}
+```
+You will need following (slightly) complex aggregation to get monthly sales aggregation data, which may be much more complex if you have sophisticated business logic.
+```
+db.customer.aggregate([
+  {
+    "$unwind": "$transactions"
+  },
+  {
+    "$group": {
+      "_id": {
+        $dateTrunc: {
+          date: "$transactions.date",
+          unit: "month"
+        }
+      },
+      "totalAmount": {
+        "$sum": "$transactions.amount"
+      }
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/XEL2c__eJSv)
+You can refactor the schema to storing them as individual documents. There are 2 ways to do that:
+1. denormalize common fields
+If customer data is not that important or does not change frequently, you can simply duplicate/denormalize the field into new transactions documents.
+```
+db={
+  "transactions": [
+    {
+      "_id": "tx1",
+      "customerName": "Alice",
+      "date": ISODate("2024-01-01"),
+      "amount": 100
+    },
+    {
+      "_id": "tx2",
+      "customerName": "Alice",
+      "date": ISODate("2024-01-02"),
+      "amount": 200
+    },
+    {
+      "_id": "tx3",
+      "customerName": "Alice",
+      "date": ISODate("2024-02-01"),
+      "amount": 300
+    },
+    {
+      "_id": "tx4",
+      "customerName": "Alice",
+      "date": ISODate("2024-03-01"),
+      "amount": 400
+    }
+  ]
+}
+```
+A single `$group` will serve our previous purpose.
+```
+db.transactions.aggregate([
+  {
+    "$group": {
+      "_id": {
+        $dateTrunc: {
+          date: "$date",
+          unit: "month"
+        }
+      },
+      "totalAmount": {
+        "$sum": "$amount"
+      }
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/1ULw0HLtf4t)  
+
+2. separating customer data into separate collection
+If customer data is important/will be changed frequently, it might not be a good idea to scatter them around each transactions as it involves a lot of updates. You can segregate the data into an individual document.
+```
+db={
+  "transactions": [
+    {
+      "_id": "tx1",
+      "customerId": 1,
+      "date": ISODate("2024-01-01"),
+      "amount": 100
+    },
+    {
+      "_id": "tx2",
+      "customerId": 1,
+      "date": ISODate("2024-01-02"),
+      "amount": 200
+    },
+    {
+      "_id": "tx3",
+      "customerId": 1,
+      "date": ISODate("2024-02-01"),
+      "amount": 300
+    },
+    {
+      "_id": "tx4",
+      "customerId": 1,
+      "date": ISODate("2024-03-01"),
+      "amount": 400
+    }
+  ],
+  "customer": [
+    {
+      "_id": 1,
+      "name": "Alice"
+    }
+  ]
+}
+```
+You can perform `$lookup` to the `customer` collection to retrieve customer data.
+
+#### What would be the remedy if this issue already happen?  
+You can refactor your schema and perform data migration according to above suggestions. The most important thing is that you need to identify your common query pattern. That would be a rather sophisticated topic so we don't go into details here. Once you identify the most common query, you can rafctor your schema towards a schema that is more suitable for your query needs.
+
 ---------------------------------------------
 ### Using dynamic value as field name
+#### What is the Symptom?  
+TODO
+#### Why this is bad?  
+TODO
+#### What would be suggested way(s) to avoid this?  
+TODO
+#### What would be the remedy if this issue already happen?  
 TODO
 ---------------------------------------------
 ### Highly nested array
+#### What is the Symptom?  
+TODO
+#### Why this is bad?  
+TODO
+#### What would be suggested way(s) to avoid this?  
+TODO
+#### What would be the remedy if this issue already happen?  
 TODO
 ---------------------------------------------
 ### Storing as recusive structure
+#### What is the Symptom?  
+TODO
+#### Why this is bad?  
+TODO
+#### What would be suggested way(s) to avoid this?  
+TODO
+#### What would be the remedy if this issue already happen?  
 TODO
 ---------------------------------------------
 ### Scattering similar data/information in different collections/database
+#### What is the Symptom?  
+TODO
+#### Why this is bad?  
+TODO
+#### What would be suggested way(s) to avoid this?  
+TODO
+#### What would be the remedy if this issue already happen?  
 TODO
