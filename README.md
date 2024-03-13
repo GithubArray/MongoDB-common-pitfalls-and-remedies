@@ -435,13 +435,84 @@ You can refactor your schema and perform data migration according to above sugge
 ---------------------------------------------
 ### Using dynamic value as field name
 #### What is the Symptom?  
-TODO
+Instead of fixed field name, dynamic/non-constant values are used as field name. An forex exchange(FX) schema may looks like this:
+```
+[
+  {
+    "mainCurrency": "USD",
+    "fxRate": {
+      "CAD": {
+        "rate": 1.35
+      },
+      "GBP": {
+        "rate": 0.78
+      },
+      "EUR": {
+        "rate": 0.91
+      }
+    }
+  }
+]
+```
+
 #### Why this is bad?  
-TODO
+1. This introduces unnecessary complexity to query. Usually `$objectToArray` and `$arrayToObject` is required to manipulate the object when you perform filtering / mapping, which is a non-trivial process.
+2. Index cannot be built to improve performance
+3. The schema cannot be well-defined. This may hinder documentation and future integration.
+
 #### What would be suggested way(s) to avoid this?  
-TODO
+Make the field a key-value(kv) tuple, potentially as array entries.
+```
+[
+  {
+    "mainCurrency": "USD",
+    "fxRate": [
+      {
+        "currency": "CAD",
+        "rate": 1.35
+      },
+      {
+        "currency": "GBP",
+        "rate": 0.78
+      },
+      {
+        "currency": "EUR",
+        "rate": 0.91
+      }
+    ]
+  }
+]
+```
+
+In this way, you can avoid the complexity from object-array conversion and you can index the `fxRate.currency` field to improve performance. 
+
+PS. if you found yourself frequently working at the `fxRate` level, consider refactoring them to individual element. See [Storing at wrong query level](#storing-at-wrong-query-level)
+
 #### What would be the remedy if this issue already happen?  
-TODO
+1. You can refactor your schema and perform data migration according to above suggestions. 
+2. You can use `$objectToArray` to convert the object to kv tuples.
+```
+db.collection.update({},
+[
+  {
+    "$set": {
+      "fxRate": {
+        "$map": {
+          "input": {
+            "$objectToArray": "$fxRate"
+          },
+          "as": "kv",
+          "in": {
+            currency: "$$kv.k",
+            rate: "$$kv.v.rate"
+          }
+        }
+      }
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/9Akx8sXBHwR)
 ---------------------------------------------
 ### Highly nested array
 #### What is the Symptom?  
