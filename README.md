@@ -513,16 +513,95 @@ db.collection.update({},
 ])
 ```
 [Mongo Playground](https://mongoplayground.net/p/9Akx8sXBHwR)
+3. You may partially mitigate the issue through usage of [wildcard index](https://www.mongodb.com/docs/manual/core/indexes/index-types/index-wildcard/) if your only concern is performance and relatively simple structure.
+
 ---------------------------------------------
 ### Highly nested array
 #### What is the Symptom?  
-TODO
+You are nesting arrays, in a complicated and usually unnecessary manner. In this course management schema, you can see the students are allocated in nested arrays.
+```
+db={
+  "courses": [
+    {
+      _id: 1,
+      title: "Introduction to Computer Science",
+      studentGroups: [
+        {
+          group: "A",
+          students: [
+            1,
+            2
+          ]
+        },
+        {
+          group: "B",
+          students: [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      _id: 2,
+      title: "Chemistry",
+      studentGroups: [
+        {
+          group: "C",
+          students: [
+            2,
+            3
+          ]
+        },
+        {
+          group: "B",
+          students: [
+            4,
+            5
+          ]
+        }
+      ]
+    }
+  ],
+  "students": [
+    {
+      _id: 1,
+      name: "Henry",
+      age: 15
+    },
+    {
+      _id: 2,
+      name: "Kim",
+      age: 20
+    },
+    {
+      _id: 3,
+      name: "Michel",
+      age: 14
+    },
+    {
+      _id: 4,
+      name: "Max",
+      age: 16
+    },
+    {
+      _id: 5,
+      name: "Nathan",
+      age: 19
+    }
+  ]
+}
+```
+
 #### Why this is bad?  
-TODO
+1. This introduces unnecessary complexity to query. A often use case is to populate the innermost layer of array from another collection, like `students` collection's data in the above example. That will requires convoluted `$lookup`, `$mergeObjects`, `$map`/`$filter`...
+2. Queries cannot be benefited from index.
+
 #### What would be suggested way(s) to avoid this?  
-TODO
+Again, you need to figure our your most frequent query pattern first. There is no generic suggested way for this issue. However, you will likely find out the suggestions in [Storing at wrong query level](#storing-at-wrong-query-level) works here too.
+
 #### What would be the remedy if this issue already happen?  
-TODO
+See [Storing at wrong query level](#storing-at-wrong-query-level)
+
 ---------------------------------------------
 ### Storing as recusive structure
 #### What is the Symptom?  
