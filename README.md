@@ -605,13 +605,108 @@ See [Storing at wrong query level](#storing-at-wrong-query-level)
 ---------------------------------------------
 ### Storing as recusive structure
 #### What is the Symptom?  
-TODO
+Information are stored as recursive structure, often with dynamic recursive depth. Consider a family tree document like this:
+```
+db={
+  "family": [
+    {
+      _id: 1,
+      familyName: "Johnson",
+      familyTree: {
+        member: 1,
+        children: [
+          {
+            member: 2,
+            children: [
+              {
+                member: 3,
+                children: [
+                  {
+                    member: 4,
+                    children: []
+                  },
+                  {
+                    member: 5,
+                    children: []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
 #### Why this is bad?  
-TODO
+1. This introduces unnecessary complexity to query. A often use case is to populate the `member` data from another collection, which requires complicated `$lookup` and `$mergeObjects`...
+2. For complex cases like a big family, 16 MB document limit size may be breached.
+3. Queries cannot be benefited from index.
+
 #### What would be suggested way(s) to avoid this?  
-TODO
+Storing the `member` node in individual document with link to parent/children. Use `$graphLookup` to construct the tree.
+```
+db={
+  "member": [
+    {
+      _id: 1,
+      name: "great grandpa",
+      children: [
+        2
+      ]
+    },
+    {
+      _id: 2,
+      name: "grandpa",
+      children: [
+        3
+      ]
+    },
+    {
+      _id: 3,
+      name: "dad",
+      children: [
+        4,
+        5
+      ]
+    },
+    {
+      _id: 4,
+      name: "son"
+    },
+    {
+      _id: 5,
+      name: "son2"
+    }
+  ]
+}
+```
+Construct the tree with `$graphLookup`:
+```
+db.member.aggregate([
+  {
+    $match: {
+      "_id": 1
+    }
+  },
+  {
+    "$graphLookup": {
+      "from": "member",
+      "startWith": "$_id",
+      "connectFromField": "children",
+      "connectToField": "_id",
+      "as": "children"
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/Onz5w3k7vsC)
+
 #### What would be the remedy if this issue already happen?  
-TODO
+You need to iterate your existing recursive structure and flatten the structure through some application level processing.
+
 ---------------------------------------------
 ### Scattering similar data/information in different collections/database
 #### What is the Symptom?  
