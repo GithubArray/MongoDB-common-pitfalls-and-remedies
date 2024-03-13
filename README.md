@@ -710,10 +710,194 @@ You need to iterate your existing recursive structure and flatten the structure 
 ---------------------------------------------
 ### Scattering similar data/information in different collections/database
 #### What is the Symptom?  
-TODO
+Similar information are scattered in different collections/database. Consider a course schema like this:
+```
+db={
+  "courses": [
+    {
+      _id: 1,
+      title: "maths",
+      members: [
+        "p1",
+        "p2",
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5"
+      ]
+    }
+  ],
+  "professors": [
+    {
+      _id: "p1",
+      name: "Dr. Johnson"
+    },
+    {
+      _id: "p2",
+      name: "Dr. Wong"
+    }
+  ],
+  "students": [
+    {
+      _id: "s1",
+      name: "Alice"
+    },
+    {
+      _id: "s2",
+      name: "Bob"
+    },
+    {
+      _id: "s3",
+      name: "Chuck"
+    },
+    {
+      _id: "s4",
+      name: "Dean"
+    },
+    {
+      _id: "s5",
+      name: "Eve"
+    }
+  ]
+}
+```
+2 `$lookup` is required to fetch information of `professors` and `students`
+```
+db.courses.aggregate([
+  {
+    "$lookup": {
+      "from": "professors",
+      "localField": "members",
+      "foreignField": "_id",
+      "as": "professorsLookup"
+    }
+  },
+  {
+    "$lookup": {
+      "from": "students",
+      "localField": "members",
+      "foreignField": "_id",
+      "as": "studentsLookup"
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/5pvokz0nehb)
+
 #### Why this is bad?  
-TODO
+1. The structure of `professors` and `students` are actually similar and they are often queried together. There is no point in doing the expensive `$lookup` twice.
+2. Separate indices are needed to support the 2 `$lookup`. This incurs extra storage and management cost for the extra indices.
+
 #### What would be suggested way(s) to avoid this?  
-TODO
+1. Again, you need to identify your most common use case first. This determines whether your documents are "similar". 
+2. Store the scattered information in one place. You can introduce extra field to distinguish the information's original location, e.g. a `type` field to indicate whether `member` is a student or a professor. You can maintain the flexibility in usage of subpipeline.
+```
+db={
+  "courses": [
+    {
+      _id: 1,
+      title: "maths",
+      members: [
+        "p1",
+        "p2",
+        "s1",
+        "s2",
+        "s3",
+        "s4",
+        "s5"
+      ]
+    }
+  ],
+  "members": [
+    {
+      _id: "p1",
+      name: "Dr. Johnson",
+      type: "professor"
+    },
+    {
+      _id: "p2",
+      name: "Dr. Wong",
+      type: "professor"
+    },
+    {
+      _id: "s1",
+      name: "Alice",
+      type: "student"
+    },
+    {
+      _id: "s2",
+      name: "Bob",
+      type: "student"
+    },
+    {
+      _id: "s3",
+      name: "Chuck",
+      type: "student"
+    },
+    {
+      _id: "s4",
+      name: "Dean",
+      type: "student"
+    },
+    {
+      _id: "s5",
+      name: "Eve",
+      type: "student"
+    }
+  ]
+}
+```
+Querying only students:
+```
+db.courses.aggregate([
+  {
+    "$lookup": {
+      "from": "members",
+      "localField": "members",
+      "foreignField": "_id",
+      "pipeline": [
+        {
+          $match: {
+            "type": "student"
+          }
+        }
+      ],
+      "as": "membersLookup"
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/cxJe7RQauZM)
+
 #### What would be the remedy if this issue already happen?  
-TODO
+1. You can refactor your schema and perform data migration according to above suggestions. 
+2. Use `$unionsWith` and `$merge` / `$out` to consolidate the inforamtion
+```
+db.professors.aggregate([
+  {
+    "$set": {
+      "type": "professor"
+    }
+  },
+  {
+    "$unionWith": {
+      "coll": "students",
+      "pipeline": [
+        {
+          "$set": {
+            "type": "student"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "$merge": {
+      "into": "members",
+      "on": "_id"
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/6xBUuYWitZZ)
