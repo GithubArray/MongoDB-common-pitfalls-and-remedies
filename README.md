@@ -901,3 +901,99 @@ db.professors.aggregate([
 ])
 ```
 [Mongo Playground](https://mongoplayground.net/p/6xBUuYWitZZ)
+
+
+---------------------------------------------
+### Inconsistent data types for $lookup in reference field
+#### What is the Symptom?  
+Inconsistent data types are used in `$lookup` for reference fields. A common example would be amking ObjectId fields as Strings. Note the different data types in `itemId` field in `order` collection and `_id` field in `item` collection.
+
+```
+db={
+  "order": [
+    {
+      "itemId": "5a934e000102030405000000",
+      "price": 1,
+      "quantity": 2
+    },
+    {
+      "_id": 2,
+      "itemId": "5a934e000102030405000001",
+      "price": 2,
+      "quantity": 1
+    },
+    {
+      "_id": 3,
+      "itemId": "5a934e000102030405000002",
+      "price": 1,
+      "quantity": 2
+    }
+  ],
+  "item": [
+    {
+      "_id": ObjectId("5a934e000102030405000000"),
+      "name": "apple"
+    },
+    {
+      "_id": ObjectId("5a934e000102030405000001"),
+      "name": "orange"
+    },
+    {
+      "_id": ObjectId("5a934e000102030405000002"),
+      "name": "banana"
+    }
+  ]
+}
+```
+
+#### Why this is bad?  
+This will result in unexpected (often incorrect) `$lookup` result.
+
+
+#### What would be suggested way(s) to avoid this?  
+Standardize the field types in both collections, either both in strings/ObjectId/numerics...
+
+#### What would be the remedy if this issue already happen?
+1. use type conversion before `$lookup`, e.g. `$toObjectId` or `$toString`... Note that index may not be leveraged after type conversion.
+```
+db.order.aggregate([
+  {
+    "$lookup": {
+      "from": "item",
+      "let": {
+        "itemId": {
+          "$toObjectId": "$itemId"
+        }
+      },
+      "pipeline": [
+        {
+          "$match": {
+            "$expr": {
+              "$eq": [
+                "$_id",
+                "$$itemId"
+              ]
+            }
+          }
+        }
+      ],
+      "as": "itemLookup"
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/dkQ3K3zRreN)  
+2. Data sanitization with type conversion operator
+```
+db.order.update({},
+[
+  {
+    $set: {
+      itemId: {
+        $toObjectId: "$itemId"
+      }
+    }
+  }
+])
+```
+[Mongo Playground](https://mongoplayground.net/p/5yBSM0tjbKZ)  
